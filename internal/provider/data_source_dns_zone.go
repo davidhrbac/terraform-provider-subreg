@@ -108,7 +108,7 @@ func (d *dnsZoneDataSource) Read(ctx context.Context, req datasource.ReadRequest
 		state.Records = append(state.Records, dnsZoneRecordModel{
 			ID:      types.StringValue(strconv.Itoa(record.ID)),
 			Name:    types.StringValue(normalizeRecordName(record.Name)),
-			Type:    types.StringValue(record.Type),
+			Type:    types.StringValue(normalizeRecordType(record.Type)),
 			Content: types.StringValue(record.Content),
 			Prio:    types.Int64Value(int64(record.Prio)),
 			TTL:     types.Int64Value(int64(record.TTL)),

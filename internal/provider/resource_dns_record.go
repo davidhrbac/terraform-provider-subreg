@@ -141,7 +141,7 @@ func (r *dnsRecordResource) Create(ctx context.Context, req resource.CreateReque
 		ID:      types.StringValue(strconv.Itoa(id)),
 		Domain:  plan.Domain,
 		Name:    types.StringValue(normalizeRecordName(record.Name)),
-		Type:    types.StringValue(record.Type),
+		Type:    types.StringValue(normalizeRecordType(record.Type)),
 		Content: types.StringValue(record.Content),
 		Prio:    types.Int64Value(int64(record.Prio)),
 		TTL:     types.Int64Value(int64(record.TTL)),
@@ -174,7 +174,7 @@ func (r *dnsRecordResource) Read(ctx context.Context, req resource.ReadRequest, 
 	}
 
 	state.Name = types.StringValue(normalizeRecordName(record.Name))
-	state.Type = types.StringValue(record.Type)
+	state.Type = types.StringValue(normalizeRecordType(record.Type))
 	state.Content = types.StringValue(record.Content)
 	state.Prio = types.Int64Value(int64(record.Prio))
 	state.TTL = types.Int64Value(int64(record.TTL))
@@ -227,7 +227,7 @@ func (r *dnsRecordResource) Update(ctx context.Context, req resource.UpdateReque
 	}
 
 	state.Name = types.StringValue(normalizeRecordName(record.Name))
-	state.Type = types.StringValue(record.Type)
+	state.Type = types.StringValue(normalizeRecordType(record.Type))
 	state.Content = types.StringValue(record.Content)
 	state.Prio = types.Int64Value(int64(record.Prio))
 	state.TTL = types.Int64Value(int64(record.TTL))
