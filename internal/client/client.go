@@ -9,21 +9,28 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
+	"reflect"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/tiaguinho/gosoap"
+	"golang.org/x/net/html/charset"
 )
 
 const defaultTimeout = 30 * time.Second
 
+const soapPrefix = "soap"
+
 type Client struct {
-	soap     *gosoap.Client
-	login    string
-	password string
+	httpClient      *http.Client
+	endpointURL     string
+	targetNamespace string
+	wsdl            *wsdlDefinitions
+	login           string
+	password        string
 
 	mu   sync.Mutex
 	ssid string
@@ -51,6 +58,53 @@ type responseError struct {
 type responseErrorCode struct {
 	Major int `xml:"major"`
 	Minor int `xml:"minor"`
+}
+
+type wsdlDefinitions struct {
+	Name            string         `xml:"name,attr"`
+	TargetNamespace string         `xml:"targetNamespace,attr"`
+	Types           []*wsdlTypes   `xml:"http://schemas.xmlsoap.org/wsdl/ types"`
+	Services        []*wsdlService `xml:"http://schemas.xmlsoap.org/wsdl/ service"`
+	Bindings        []*wsdlBinding `xml:"http://schemas.xmlsoap.org/wsdl/ binding"`
+}
+
+type wsdlBinding struct {
+	Name       string           `xml:"name,attr"`
+	Type       string           `xml:"type,attr"`
+	Operations []*wsdlOperation `xml:"http://schemas.xmlsoap.org/wsdl/ operation"`
+}
+
+type wsdlTypes struct {
+	XsdSchema []*xsdSchema `xml:"http://www.w3.org/2001/XMLSchema schema"`
+}
+
+type wsdlOperation struct {
+	Name           string           `xml:"name,attr"`
+	SoapOperations []*soapOperation `xml:"http://schemas.xmlsoap.org/wsdl/soap/ operation"`
+}
+
+type wsdlService struct {
+	Name  string      `xml:"name,attr"`
+	Ports []*wsdlPort `xml:"http://schemas.xmlsoap.org/wsdl/ port"`
+}
+
+type wsdlPort struct {
+	Name          string         `xml:"name,attr"`
+	Binding       string         `xml:"binding,attr"`
+	SoapAddresses []*soapAddress `xml:"http://schemas.xmlsoap.org/wsdl/soap/ address"`
+}
+
+type soapAddress struct {
+	Location string `xml:"location,attr"`
+}
+
+type soapOperation struct {
+	SoapAction string `xml:"soapAction,attr"`
+	Style      string `xml:"style,attr"`
+}
+
+type xsdSchema struct {
+	TargetNamespace string `xml:"targetNamespace,attr"`
 }
 
 func debugSOAP() bool {
@@ -106,15 +160,23 @@ func New(login, password, wsdlURL string) (*Client, error) {
 	}
 
 	httpClient := &http.Client{Timeout: defaultTimeout, Transport: transport}
-	soap, err := gosoap.SoapClient(wsdlURL, httpClient)
+	defs, err := getWsdlDefinitions(wsdlURL, httpClient)
+	if err != nil {
+		return nil, err
+	}
+
+	endpointURL, targetNamespace, err := wsdlEndpointAndNamespace(defs)
 	if err != nil {
 		return nil, err
 	}
 
 	return &Client{
-		soap:     soap,
-		login:    login,
-		password: password,
+		httpClient:      httpClient,
+		endpointURL:     endpointURL,
+		targetNamespace: targetNamespace,
+		wsdl:            defs,
+		login:           login,
+		password:        password,
 	}, nil
 }
 
@@ -126,7 +188,7 @@ func (c *Client) Login(ctx context.Context) (string, error) {
 		return c.ssid, nil
 	}
 
-	resp, err := c.call(ctx, "Login", gosoap.Params{
+	resp, err := c.call(ctx, "Login", map[string]any{
 		"login":    c.login,
 		"password": c.password,
 	})
@@ -135,7 +197,7 @@ func (c *Client) Login(ctx context.Context) (string, error) {
 	}
 
 	var data loginData
-	if err := xml.Unmarshal(resp.Data.InnerXML, &data); err != nil {
+	if err := decodeXMLBytes(resp.Data.InnerXML, &data); err != nil {
 		return "", err
 	}
 	ssid := data.SSID
@@ -153,13 +215,13 @@ func (c *Client) Login(ctx context.Context) (string, error) {
 }
 
 func (c *Client) GetDNSZone(ctx context.Context, domain string) ([]DNSRecord, error) {
-	ssid, err := c.Login(ctx)
+	ssID, err := c.Login(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	resp, err := c.call(ctx, "Get_DNS_Zone", gosoap.Params{
-		"ssid":   ssid,
+	resp, err := c.call(ctx, "Get_DNS_Zone", map[string]any{
+		"ssid":   ssID,
 		"domain": domain,
 	})
 	if err != nil {
@@ -170,31 +232,7 @@ func (c *Client) GetDNSZone(ctx context.Context, domain string) ([]DNSRecord, er
 		_ = writeDebugFile("subreg_get_dns_zone_data.xml", resp.Data.InnerXML)
 	}
 
-	var data getDNSZoneData
-	if err := xml.Unmarshal(resp.Data.InnerXML, &data); err != nil {
-		return nil, err
-	}
-
-	if len(data.Records) > 0 {
-		return data.Records, nil
-	}
-
-	var dataItems getDNSZoneDataItems
-	if err := xml.Unmarshal(resp.Data.InnerXML, &dataItems); err == nil && len(dataItems.Records) > 0 {
-		return dataItems.Records, nil
-	}
-
-	var dataRecords getDNSZoneDataRecords
-	if err := xml.Unmarshal(resp.Data.InnerXML, &dataRecords); err == nil && len(dataRecords.Records) > 0 {
-		return dataRecords.Records, nil
-	}
-
-	fallback := parseDNSRecordsFromXML(resp.Data.InnerXML)
-	if len(fallback) > 0 {
-		return fallback, nil
-	}
-
-	return nil, nil
+	return decodeDNSZoneRecords(resp.Data.InnerXML)
 }
 
 func writeDebugFile(name string, data []byte) error {
@@ -205,8 +243,77 @@ func writeDebugFile(name string, data []byte) error {
 	return os.WriteFile(path, data, 0o600)
 }
 
+func decodeDNSZoneRecords(data []byte) ([]DNSRecord, error) {
+	trimmed := bytes.TrimSpace(data)
+	if len(trimmed) == 0 {
+		return nil, nil
+	}
+
+	if records, ok := decodeDNSZonePayload(trimmed); ok {
+		return records, nil
+	}
+	if records, ok := decodeDNSZonePayload(wrapXMLFragment(trimmed)); ok {
+		return records, nil
+	}
+
+	fallback := parseDNSRecordsFromXML(trimmed)
+	if len(fallback) > 0 {
+		return fallback, nil
+	}
+
+	return nil, fmt.Errorf("unable to parse DNS zone response")
+}
+
+func decodeDNSZonePayload(data []byte) ([]DNSRecord, bool) {
+	var parsed getDNSZoneData
+	if err := decodeXMLBytes(data, &parsed); err == nil {
+		records := cleanDNSRecords(parsed.Records)
+		if parsed.Domain != "" || len(records) > 0 {
+			return records, true
+		}
+	}
+
+	var parsedItems getDNSZoneDataItems
+	if err := decodeXMLBytes(data, &parsedItems); err == nil {
+		records := cleanDNSRecords(parsedItems.Records)
+		if parsedItems.Domain != "" || len(records) > 0 {
+			return records, true
+		}
+	}
+
+	var parsedRecords getDNSZoneDataRecords
+	if err := decodeXMLBytes(data, &parsedRecords); err == nil {
+		records := cleanDNSRecords(parsedRecords.Records)
+		if parsedRecords.Domain != "" || len(records) > 0 {
+			return records, true
+		}
+	}
+
+	return nil, false
+}
+
+func cleanDNSRecords(records []DNSRecord) []DNSRecord {
+	filtered := make([]DNSRecord, 0, len(records))
+	for _, record := range records {
+		if record.ID == 0 && record.Name == "" && record.Type == "" && record.Content == "" && record.Prio == 0 && record.TTL == 0 {
+			continue
+		}
+		filtered = append(filtered, record)
+	}
+	return filtered
+}
+
+func wrapXMLFragment(data []byte) []byte {
+	wrapped := make([]byte, 0, len(data)+13)
+	wrapped = append(wrapped, []byte("<root>")...)
+	wrapped = append(wrapped, data...)
+	wrapped = append(wrapped, []byte("</root>")...)
+	return wrapped
+}
+
 func parseDNSRecordsFromXML(data []byte) []DNSRecord {
 	dec := xml.NewDecoder(bytes.NewReader(data))
+	dec.CharsetReader = charset.NewReaderLabel
 	var records []DNSRecord
 	for {
 		tok, err := dec.Token()
@@ -234,12 +341,12 @@ func parseDNSRecordsFromXML(data []byte) []DNSRecord {
 }
 
 func (c *Client) AddDNSRecord(ctx context.Context, domain string, record DNSRecordInput) error {
-	ssid, err := c.Login(ctx)
+	ssID, err := c.Login(ctx)
 	if err != nil {
 		return err
 	}
 
-	recordParams := gosoap.Params{
+	recordParams := map[string]any{
 		"name":    record.Name,
 		"type":    record.Type,
 		"content": record.Content,
@@ -251,8 +358,8 @@ func (c *Client) AddDNSRecord(ctx context.Context, domain string, record DNSReco
 		recordParams["ttl"] = strconv.Itoa(*record.TTL)
 	}
 
-	_, err = c.call(ctx, "Add_DNS_Record", gosoap.Params{
-		"ssid":   ssid,
+	_, err = c.call(ctx, "Add_DNS_Record", map[string]any{
+		"ssid":   ssID,
 		"domain": domain,
 		"record": recordParams,
 	})
@@ -270,9 +377,13 @@ func (c *Client) AddDNSRecordWithID(ctx context.Context, domain string, record D
 		return 0, err
 	}
 
+	return matchCreatedDNSRecordID(records, record)
+}
+
+func matchCreatedDNSRecordID(records []DNSRecord, record DNSRecordInput) (int, error) {
 	var candidates []DNSRecord
 	for _, rec := range records {
-		if rec.Name != record.Name {
+		if normalizeRecordNameForMatch(rec.Name) != normalizeRecordNameForMatch(record.Name) {
 			continue
 		}
 		if !strings.EqualFold(rec.Type, record.Type) {
@@ -290,28 +401,31 @@ func (c *Client) AddDNSRecordWithID(ctx context.Context, domain string, record D
 		candidates = append(candidates, rec)
 	}
 
-	if len(candidates) == 0 {
+	switch len(candidates) {
+	case 0:
 		return 0, errors.New("record not found after create")
+	case 1:
+		return candidates[0].ID, nil
+	default:
+		return 0, fmt.Errorf("multiple DNS records matched created record (name=%q type=%q content=%q)", record.Name, record.Type, record.Content)
 	}
+}
 
-	// Prefer the newest record when duplicates exist.
-	maxID := candidates[0].ID
-	for _, rec := range candidates[1:] {
-		if rec.ID > maxID {
-			maxID = rec.ID
-		}
+func normalizeRecordNameForMatch(value string) string {
+	name := strings.TrimSpace(value)
+	if name == "" || name == "@" {
+		return "@"
 	}
-
-	return maxID, nil
+	return name
 }
 
 func (c *Client) ModifyDNSRecord(ctx context.Context, domain string, id int, record DNSRecordInput) error {
-	ssid, err := c.Login(ctx)
+	ssID, err := c.Login(ctx)
 	if err != nil {
 		return err
 	}
 
-	recordParams := gosoap.Params{
+	recordParams := map[string]any{
 		"id":      strconv.Itoa(id),
 		"type":    record.Type,
 		"content": record.Content,
@@ -323,8 +437,8 @@ func (c *Client) ModifyDNSRecord(ctx context.Context, domain string, id int, rec
 		recordParams["ttl"] = strconv.Itoa(*record.TTL)
 	}
 
-	_, err = c.call(ctx, "Modify_DNS_Record", gosoap.Params{
-		"ssid":   ssid,
+	_, err = c.call(ctx, "Modify_DNS_Record", map[string]any{
+		"ssid":   ssID,
 		"domain": domain,
 		"record": recordParams,
 	})
@@ -333,15 +447,15 @@ func (c *Client) ModifyDNSRecord(ctx context.Context, domain string, id int, rec
 }
 
 func (c *Client) DeleteDNSRecord(ctx context.Context, domain string, id int) error {
-	ssid, err := c.Login(ctx)
+	ssID, err := c.Login(ctx)
 	if err != nil {
 		return err
 	}
 
-	_, err = c.call(ctx, "Delete_DNS_Record", gosoap.Params{
-		"ssid":   ssid,
+	_, err = c.call(ctx, "Delete_DNS_Record", map[string]any{
+		"ssid":   ssID,
 		"domain": domain,
-		"record": gosoap.Params{"id": strconv.Itoa(id)},
+		"record": map[string]any{"id": strconv.Itoa(id)},
 	})
 
 	return err
@@ -362,18 +476,55 @@ func (c *Client) GetDNSRecordByID(ctx context.Context, domain string, id int) (D
 	return DNSRecord{}, false, nil
 }
 
-func (c *Client) call(ctx context.Context, method string, params gosoap.Params) (responseBody, error) {
-	if c.soap == nil {
-		return responseBody{}, errors.New("soap client is not initialized")
+func (c *Client) call(ctx context.Context, method string, params any) (responseBody, error) {
+	if c.httpClient == nil {
+		return responseBody{}, errors.New("http client is not initialized")
+	}
+	if err := ctx.Err(); err != nil {
+		return responseBody{}, err
+	}
+	if c.endpointURL == "" {
+		return responseBody{}, errors.New("soap endpoint is not initialized")
 	}
 
-	res, err := c.soap.Call(method, params)
+	soapAction := ""
+	if c.wsdl != nil {
+		soapAction = c.wsdl.GetSoapActionFromWsdlOperation(method)
+	}
+	if soapAction == "" {
+		return responseBody{}, fmt.Errorf("soap action not found for %s", method)
+	}
+
+	payload, err := buildSOAPEnvelope(method, c.targetNamespace, params)
+	if err != nil {
+		return responseBody{}, fmt.Errorf("%s payload build failed: %w", method, err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.endpointURL, bytes.NewReader(payload))
+	if err != nil {
+		return responseBody{}, fmt.Errorf("%s request build failed: %w", method, err)
+	}
+	req.Header.Set("Content-Type", "text/xml;charset=UTF-8")
+	req.Header.Set("Accept", "text/xml")
+	req.Header.Set("SOAPAction", soapAction)
+
+	res, err := c.httpClient.Do(req)
 	if err != nil {
 		return responseBody{}, fmt.Errorf("%s call failed: %w", method, err)
 	}
+	defer res.Body.Close()
+
+	body, err := io.ReadAll(res.Body)
+	if err != nil {
+		return responseBody{}, fmt.Errorf("%s response read failed: %w", method, err)
+	}
+
+	if res.StatusCode < 200 || res.StatusCode >= 400 {
+		return responseBody{}, fmt.Errorf("%s call failed: unexpected status code: %s", method, res.Status)
+	}
 
 	var envelope responseEnvelope
-	if err := res.Unmarshal(&envelope); err != nil {
+	if err := decodeXMLBytes(body, &envelope); err != nil {
 		return responseBody{}, fmt.Errorf("%s response unmarshal failed: %w", method, err)
 	}
 
@@ -387,8 +538,202 @@ func (c *Client) call(ctx context.Context, method string, params gosoap.Params) 
 	return envelope.Response, nil
 }
 
+func buildSOAPEnvelope(method, namespace string, params any) ([]byte, error) {
+	if method == "" || namespace == "" {
+		return nil, errors.New("method or namespace is empty")
+	}
+
+	var buf bytes.Buffer
+	enc := xml.NewEncoder(&buf)
+	tokens := tokenData{}
+	tokens.startEnvelope()
+	if err := tokens.startBody(method, namespace); err != nil {
+		return nil, err
+	}
+	tokens.recursiveEncode(params)
+	tokens.endBody(method)
+	tokens.endEnvelope()
+
+	for _, token := range tokens.data {
+		if err := enc.EncodeToken(token); err != nil {
+			return nil, err
+		}
+	}
+	if err := enc.Flush(); err != nil {
+		return nil, err
+	}
+
+	return buf.Bytes(), nil
+}
+
+type tokenData struct {
+	data []xml.Token
+}
+
+func (tokens *tokenData) recursiveEncode(value any) {
+	if value == nil {
+		return
+	}
+
+	v := reflect.ValueOf(value)
+	if !v.IsValid() {
+		return
+	}
+	for v.Kind() == reflect.Pointer {
+		if v.IsNil() {
+			return
+		}
+		v = v.Elem()
+	}
+
+	switch v.Kind() {
+	case reflect.Map:
+		for _, key := range v.MapKeys() {
+			t := xml.StartElement{Name: xml.Name{Local: fmt.Sprint(key.Interface())}}
+			tokens.data = append(tokens.data, t)
+			tokens.recursiveEncode(v.MapIndex(key).Interface())
+			tokens.data = append(tokens.data, xml.EndElement{Name: t.Name})
+		}
+	case reflect.Slice, reflect.Array:
+		for i := 0; i < v.Len(); i++ {
+			tokens.recursiveEncode(v.Index(i).Interface())
+		}
+	case reflect.String:
+		tokens.data = append(tokens.data, xml.CharData(v.String()))
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		tokens.data = append(tokens.data, xml.CharData(strconv.FormatInt(v.Int(), 10)))
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
+		tokens.data = append(tokens.data, xml.CharData(strconv.FormatUint(v.Uint(), 10)))
+	case reflect.Bool:
+		tokens.data = append(tokens.data, xml.CharData(strconv.FormatBool(v.Bool())))
+	default:
+		tokens.data = append(tokens.data, xml.CharData(fmt.Sprint(v.Interface())))
+	}
+}
+
+func (tokens *tokenData) startEnvelope() {
+	e := xml.StartElement{
+		Name: xml.Name{Local: soapPrefix + ":Envelope"},
+	}
+	e.Attr = []xml.Attr{
+		{Name: xml.Name{Local: "xmlns:xsi"}, Value: "http://www.w3.org/2001/XMLSchema-instance"},
+		{Name: xml.Name{Local: "xmlns:xsd"}, Value: "http://www.w3.org/2001/XMLSchema"},
+		{Name: xml.Name{Local: "xmlns:soap"}, Value: "http://schemas.xmlsoap.org/soap/envelope/"},
+	}
+	tokens.data = append(tokens.data, e)
+}
+
+func (tokens *tokenData) endEnvelope() {
+	tokens.data = append(tokens.data, xml.EndElement{Name: xml.Name{Local: soapPrefix + ":Envelope"}})
+}
+
+func (tokens *tokenData) startBody(method, namespace string) error {
+	b := xml.StartElement{Name: xml.Name{Local: soapPrefix + ":Body"}}
+	r := xml.StartElement{
+		Name: xml.Name{Local: method},
+		Attr: []xml.Attr{{Name: xml.Name{Local: "xmlns"}, Value: namespace}},
+	}
+	tokens.data = append(tokens.data, b, r)
+	return nil
+}
+
+func (tokens *tokenData) endBody(method string) {
+	tokens.data = append(tokens.data,
+		xml.EndElement{Name: xml.Name{Local: method}},
+		xml.EndElement{Name: xml.Name{Local: soapPrefix + ":Body"}},
+	)
+}
+
+func decodeXMLBytes(data []byte, target any) error {
+	dec := xml.NewDecoder(bytes.NewReader(data))
+	dec.CharsetReader = charset.NewReaderLabel
+	return dec.Decode(target)
+}
+
+func getWsdlDefinitions(u string, c *http.Client) (*wsdlDefinitions, error) {
+	reader, err := getWsdlBody(u, c)
+	if err != nil {
+		return nil, err
+	}
+	defer reader.Close()
+
+	decoder := xml.NewDecoder(reader)
+	decoder.CharsetReader = charset.NewReaderLabel
+	var wsdl wsdlDefinitions
+	if err := decoder.Decode(&wsdl); err != nil {
+		return nil, err
+	}
+
+	return &wsdl, nil
+}
+
+func getWsdlBody(u string, c *http.Client) (reader io.ReadCloser, err error) {
+	parse, err := url.Parse(u)
+	if err != nil {
+		return nil, err
+	}
+	if parse.Scheme == "file" {
+		outFile, err := os.Open(parse.Path)
+		if err != nil {
+			return nil, err
+		}
+		return outFile, nil
+	}
+	if c == nil {
+		c = &http.Client{}
+	}
+	r, err := c.Get(u)
+	if err != nil {
+		return nil, err
+	}
+	return r.Body, nil
+}
+
+func wsdlEndpointAndNamespace(defs *wsdlDefinitions) (string, string, error) {
+	if defs == nil {
+		return "", "", errors.New("wsdl definitions not found")
+	}
+	if len(defs.Types) == 0 || defs.Types[0] == nil || len(defs.Types[0].XsdSchema) == 0 || defs.Types[0].XsdSchema[0] == nil {
+		return "", "", errors.New("wsdl target namespace not found")
+	}
+	namespace := defs.Types[0].XsdSchema[0].TargetNamespace
+	if namespace == "" {
+		return "", "", errors.New("wsdl target namespace not found")
+	}
+	if len(defs.Services) == 0 || defs.Services[0] == nil {
+		return "", "", errors.New("wsdl service not found")
+	}
+	if len(defs.Services[0].Ports) == 0 || defs.Services[0].Ports[0] == nil {
+		return "", "", errors.New("wsdl port not found")
+	}
+	if len(defs.Services[0].Ports[0].SoapAddresses) == 0 || defs.Services[0].Ports[0].SoapAddresses[0] == nil {
+		return "", "", errors.New("wsdl soap address not found")
+	}
+	endpointURL := defs.Services[0].Ports[0].SoapAddresses[0].Location
+	if endpointURL == "" {
+		return "", "", errors.New("wsdl soap endpoint not found")
+	}
+	return endpointURL, namespace, nil
+}
+
+func (wsdl *wsdlDefinitions) GetSoapActionFromWsdlOperation(operation string) string {
+	if wsdl == nil || len(wsdl.Bindings) == 0 || wsdl.Bindings[0] == nil {
+		return ""
+	}
+	for _, o := range wsdl.Bindings[0].Operations {
+		if o == nil || o.Name != operation {
+			continue
+		}
+		if len(o.SoapOperations) > 0 && o.SoapOperations[0] != nil {
+			return o.SoapOperations[0].SoapAction
+		}
+	}
+	return ""
+}
+
 func findElementValue(data []byte, name string) (string, bool) {
 	dec := xml.NewDecoder(bytes.NewReader(data))
+	dec.CharsetReader = charset.NewReaderLabel
 	for {
 		ok, value, err := decodeNextElementValue(dec, name)
 		if err != nil {
