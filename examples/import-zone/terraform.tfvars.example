@@ -1,0 +1,5 @@
+subreg_login    = "your-login"
+subreg_password = "your-password"
+subreg_domain   = "example.com"
+
+# subreg_wsdl_url = "https://demoreg.net/wsdl"

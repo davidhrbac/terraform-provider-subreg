@@ -1,0 +1,9 @@
+.terraform/
+*.tfstate
+*.tfstate.*
+terraform.tfvars
+*.auto.tfvars
+env.sh
+terraform.log
+plugins/
+generated_resources.tf
