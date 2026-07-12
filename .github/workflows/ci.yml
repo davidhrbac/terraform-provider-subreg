@@ -1,0 +1,59 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  test:
+    name: Go tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - name: gofmt check
+        run: |
+          test -z "$(gofmt -l .)"
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: go test
+        run: go test ./...
+
+  security:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+
+      - name: install security tools
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          go install github.com/google/osv-scanner/cmd/osv-scanner@latest
+          go install github.com/CycloneDX/cyclonedx-gomod/cmd/cyclonedx-gomod@latest
+
+      - name: govulncheck (package scan)
+        run: $(go env GOPATH)/bin/govulncheck -scan=package ./...
+
+      - name: generate SBOM
+        run: $(go env GOPATH)/bin/cyclonedx-gomod mod -std -json -output sbom.json .
+
+      - name: osv-scanner (SBOM)
+        run: $(go env GOPATH)/bin/osv-scanner scan --sbom=sbom.json
+
+      - name: upload sbom artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: sbom
+          path: sbom.json

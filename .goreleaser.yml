@@ -1,0 +1,62 @@
+version: 2
+
+project_name: terraform-provider-subreg
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+
+archives:
+  - formats: [zip]
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - none*
+
+checksum:
+  name_template: "{{ .ProjectName }}_{{ .Version }}_SHA256SUMS"
+  algorithm: sha256
+
+signs:
+  - artifacts: checksum
+
+release:
+  github:
+    owner: davidhrbac
+    name: terraform-provider-subreg
+  prerelease: auto
+
+changelog:
+  use: github
+  sort: asc
+  abbrev: 7
+
+  format: "[{{ .SHA }}](https://github.com/davidhrbac/terraform-provider-subreg/commit/{{ .SHA }}) : {{ .Message }}"
+
+  groups:
+    - title: "New Features"
+      regexp: '^([0-9a-f]+[: ]+)?feat(\([^)]+\))?:'
+      order: 0
+
+    - title: "Bug fixes"
+      regexp: '^([0-9a-f]+[: ]+)?fix(\([^)]+\))?:'
+      order: 10
+
+    - title: "Other"
+      regexp: '.*'
+      order: 99
+
+  filters:
+    exclude:
+      - '^([0-9a-f]+[: ]+)?Merge pull request'
+      - '^([0-9a-f]+[: ]+)?Merge branch'
