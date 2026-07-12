@@ -47,4 +47,4 @@ TF_CLI_CONFIG_FILE=terraform.rc terraform apply
 
 ## Importing existing domains
 Use `examples/import-zone` to bootstrap an existing domain into Terraform.
-Generated configs are written to `generated_resources.tf` in the import workspace.
+Generated configs are written to `<domain>.tf` in the import workspace root.

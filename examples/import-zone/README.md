@@ -34,8 +34,8 @@ chmod +x generate-config.sh
 TF_CLI_CONFIG_FILE=terraform.rc terraform apply
 ```
 
-`imports.tf` and `generated_resources.tf` are generated locally and ignored by git.
-`generated_resources.tf` will contain one `subreg_domain`, one `subreg_dns_zone`, and one `subreg_dns_record` per record in the zone.
+`imports.tf` and `<domain>.tf` are generated locally.
+`<domain>.tf` will contain one `subreg_domain`, one `subreg_dns_zone`, and one `subreg_dns_record` per record in the zone.
 Default `prio = 0` values are omitted from the generated config.
 `subreg_dns_zone` includes the desired `dnssec` state.
 Resources are sorted as domain, DNSSEC zone, then records.
@@ -47,4 +47,4 @@ Templates in this directory:
 ## Notes
 - The import uses `domain:id` format and requires Terraform >= 1.5.
 - `main.tf` only wires the provider; you can keep the generated config in a separate file or merge it into your own layout.
-- Use `generate-config.sh` to write config into `generated_resources.tf`.
+- Use `generate-config.sh` to write config into `<domain>.tf` in the workspace root.

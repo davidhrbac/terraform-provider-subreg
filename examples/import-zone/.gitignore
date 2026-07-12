@@ -1,5 +1,4 @@
 imports.tf
-generated_resources.tf
 terraform.rc
 terraform.tfvars
 terraform.tfstate

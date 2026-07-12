@@ -152,7 +152,7 @@ output "zone_records" {
 - Basic usage: `examples/basic`
 - Import a domain, DNSSEC, and records with config generation: `examples/import-zone`
 
-Generated import configs are written to `generated_resources.tf` in the import workspace.
+Generated import configs are written to `<domain>.tf` in the import workspace root.
 
 ## Workflow: import a domain and zone
 Use this when you want to take over an existing domain and generate Terraform config from it.
@@ -180,7 +180,7 @@ chmod +x generate-imports.sh
 ```
 
 This creates `examples/import-zone/imports.tf` with imports for `subreg_domain`, `subreg_dns_zone`, and one `subreg_dns_record` per record ID.
-`imports.tf` and `generated_resources.tf` are local artifacts and ignored by git.
+`imports.tf` and `<domain>.tf` are local artifacts.
 
 4) Generate Terraform config and import state:
 
@@ -191,7 +191,7 @@ chmod +x generate-config.sh
 TF_CLI_CONFIG_FILE=terraform.rc terraform apply
 ```
 
-5) Review `generated_resources.tf` and clean up:
+5) Review `<domain>.tf` and clean up:
 - Remove any duplicate records you don't want managed.
 - If you keep round-robin records, keep one resource per record.
 - You can delete `imports.tf` after import is complete.

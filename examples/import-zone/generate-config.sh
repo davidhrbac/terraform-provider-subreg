@@ -10,7 +10,7 @@ if [ -z "${DOMAIN}" ]; then
   exit 1
 fi
 
-OUTPUT_FILE="${BASE_DIR}/generated_resources.tf"
+OUTPUT_FILE="${BASE_DIR}/${DOMAIN}.tf"
 
 TMP_FILE=$(mktemp)
 rm -f "${TMP_FILE}"
