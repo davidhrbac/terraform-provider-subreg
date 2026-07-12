@@ -35,6 +35,7 @@ TF_CLI_CONFIG_FILE=terraform.rc terraform apply
 
 `imports.tf` and `generated_resources.tf` are generated locally and ignored by git.
 `generated_resources.tf` will contain one `subreg_dns_record` per record in the zone.
+Default `prio = 0` values are omitted from the generated config.
 
 Templates in this directory:
 - `imports.example.tf` shows the import block shape.

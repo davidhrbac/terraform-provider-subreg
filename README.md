@@ -42,7 +42,7 @@ Arguments:
 - `name` (Required) Record name without the domain, e.g. `@` or `www`.
 - `type` (Required) Record type, e.g. `A`, `AAAA`, `CNAME`, `MX`, `TXT`.
 - `content` (Required) Record value (IP, hostname, or text).
-- `prio` (Optional) Priority for MX records.
+- `prio` (Optional) Priority for MX records. Omit it when the default is fine.
 - `ttl` (Optional) TTL in seconds.
 
 Example:
@@ -100,6 +100,7 @@ output "zone_records" {
 - Record `type` is normalized to uppercase.
 - `name` changes require delete+add (Subreg Modify API does not accept `name`).
 - Use `@` for the root record.
+- `prio = 0` is treated as default and is omitted from generated configs.
 
 ## Examples
 - Basic usage: `examples/basic`

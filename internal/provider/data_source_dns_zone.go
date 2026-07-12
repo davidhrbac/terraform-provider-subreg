@@ -110,7 +110,7 @@ func (d *dnsZoneDataSource) Read(ctx context.Context, req datasource.ReadRequest
 			Name:    types.StringValue(normalizeRecordName(record.Name)),
 			Type:    types.StringValue(normalizeRecordType(record.Type)),
 			Content: types.StringValue(record.Content),
-			Prio:    types.Int64Value(int64(record.Prio)),
+			Prio:    recordPriorityValue(record.Prio),
 			TTL:     types.Int64Value(int64(record.TTL)),
 		})
 	}

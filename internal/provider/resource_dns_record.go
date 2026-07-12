@@ -143,7 +143,7 @@ func (r *dnsRecordResource) Create(ctx context.Context, req resource.CreateReque
 		Name:    types.StringValue(normalizeRecordName(record.Name)),
 		Type:    types.StringValue(normalizeRecordType(record.Type)),
 		Content: types.StringValue(record.Content),
-		Prio:    types.Int64Value(int64(record.Prio)),
+		Prio:    recordPriorityValue(record.Prio),
 		TTL:     types.Int64Value(int64(record.TTL)),
 	}
 
@@ -176,7 +176,7 @@ func (r *dnsRecordResource) Read(ctx context.Context, req resource.ReadRequest, 
 	state.Name = types.StringValue(normalizeRecordName(record.Name))
 	state.Type = types.StringValue(normalizeRecordType(record.Type))
 	state.Content = types.StringValue(record.Content)
-	state.Prio = types.Int64Value(int64(record.Prio))
+	state.Prio = recordPriorityValue(record.Prio)
 	state.TTL = types.Int64Value(int64(record.TTL))
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
@@ -229,7 +229,7 @@ func (r *dnsRecordResource) Update(ctx context.Context, req resource.UpdateReque
 	state.Name = types.StringValue(normalizeRecordName(record.Name))
 	state.Type = types.StringValue(normalizeRecordType(record.Type))
 	state.Content = types.StringValue(record.Content)
-	state.Prio = types.Int64Value(int64(record.Prio))
+	state.Prio = recordPriorityValue(record.Prio)
 	state.TTL = types.Int64Value(int64(record.TTL))
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
@@ -310,6 +310,16 @@ func optionalInt(value types.Int64) *int {
 	if value.IsNull() || value.IsUnknown() {
 		return nil
 	}
+	if value.ValueInt64() == 0 {
+		return nil
+	}
 	v := int(value.ValueInt64())
 	return &v
+}
+
+func recordPriorityValue(value int) types.Int64 {
+	if value == 0 {
+		return types.Int64Null()
+	}
+	return types.Int64Value(int64(value))
 }

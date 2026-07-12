@@ -16,7 +16,6 @@ resource "subreg_dns_record" "www_cname_1234568" {
   content = "www1.example.net"
   domain  = "example.com"
   name    = "www"
-  prio    = 0
   ttl     = 600
   type    = "CNAME"
 }
