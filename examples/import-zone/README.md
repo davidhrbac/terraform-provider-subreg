@@ -36,6 +36,10 @@ TF_CLI_CONFIG_FILE=terraform.rc terraform apply
 `imports.tf` and `generated_resources.tf` are generated locally and ignored by git.
 `generated_resources.tf` will contain one `subreg_dns_record` per record in the zone.
 
+Templates in this directory:
+- `imports.example.tf` shows the import block shape.
+- `generated_resources.example.tf` shows the Terraform output produced after import.
+
 ## Notes
 - The import uses `domain:id` format and requires Terraform >= 1.5.
 - `main.tf` only wires the provider; you can keep the generated config in a separate file or merge it into your own layout.
