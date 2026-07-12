@@ -34,7 +34,7 @@ chmod +x generate-config.sh
 TF_CLI_CONFIG_FILE=terraform.rc terraform apply
 ```
 
-`imports.tf` and `<domain>.tf` are generated locally.
+`imports.tf` and `<domain>.tf` are generated locally in the workspace root.
 `<domain>.tf` will contain one `subreg_domain`, one `subreg_dns_zone`, and one `subreg_dns_record` per record in the zone.
 Default `prio = 0` values are omitted from the generated config.
 `subreg_dns_zone` includes the desired `dnssec` state.
