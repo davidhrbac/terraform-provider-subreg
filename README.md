@@ -151,10 +151,10 @@ output "zone_records" {
 
 ## Examples
 - Basic usage: `examples/basic`
-- Import entire zone with config generation: `examples/import-zone`
+- Import a domain, DNSSEC, and records with config generation: `examples/import-zone`
 
-## Workflow: import records of a new zone
-Use this when you want to take over an existing zone and generate Terraform config from it.
+## Workflow: import a domain and zone
+Use this when you want to take over an existing domain and generate Terraform config from it.
 
 1) Build local provider and CLI config (example uses local plugin mirror):
 
@@ -178,7 +178,7 @@ chmod +x generate-imports.sh
 ./generate-imports.sh
 ```
 
-This creates `examples/import-zone/imports.tf` with one import block per record ID.
+This creates `examples/import-zone/imports.tf` with imports for `subreg_domain`, `subreg_dns_zone`, and one `subreg_dns_record` per record ID.
 `imports.tf` and `generated_resources.tf` are local artifacts and ignored by git.
 
 4) Generate Terraform config and import state:
@@ -197,6 +197,7 @@ TF_CLI_CONFIG_FILE=terraform.rc terraform apply
 Notes:
 - Subreg enforces TTL >= 600 (or 0 for default).
 - Root records are represented as `name = "@"`.
+- The import set also includes one `subreg_domain` and one `subreg_dns_zone` per domain.
 
 ## Acceptance Tests
 Set `TF_ACC=1` with `SUBREG_LOGIN`, `SUBREG_PASSWORD`, `SUBREG_DOMAIN`, and optionally `SUBREG_WSDL_URL=https://demoreg.net/wsdl` to run live acceptance tests against OTE.

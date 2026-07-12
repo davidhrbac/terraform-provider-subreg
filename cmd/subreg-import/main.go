@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"regexp"
 	"sort"
@@ -45,8 +46,32 @@ func main() {
 		fatal(err.Error())
 	}
 
-	if len(records) == 0 {
-		fatal("no records returned")
+	if err := writeImports(os.Stdout, domain, records); err != nil {
+		fatal(err.Error())
+	}
+}
+
+func envFirst(names ...string) string {
+	for _, name := range names {
+		if value := strings.TrimSpace(os.Getenv(name)); value != "" {
+			return value
+		}
+	}
+	return ""
+}
+
+func fatal(message string) {
+	fmt.Fprintln(os.Stderr, message)
+	os.Exit(1)
+}
+
+func writeImports(w io.Writer, domain string, records []client.DNSRecord) error {
+	domainResourceName := resourceNameForDomain(domain)
+	if _, err := fmt.Fprintf(w, "import {\n  to = subreg_domain.%s\n  id = \"%s\"\n}\n\n", domainResourceName, domain); err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintf(w, "import {\n  to = subreg_dns_zone.%s\n  id = \"%s\"\n}\n\n", domainResourceName, domain); err != nil {
+		return err
 	}
 
 	sort.Slice(records, func(i, j int) bool { return records[i].ID < records[j].ID })
@@ -72,22 +97,12 @@ func main() {
 			used[resourceName] = 1
 		}
 
-		fmt.Printf("import {\n  to = subreg_dns_record.%s\n  id = \"%s:%d\"\n}\n\n", resourceName, domain, record.ID)
-	}
-}
-
-func envFirst(names ...string) string {
-	for _, name := range names {
-		if value := strings.TrimSpace(os.Getenv(name)); value != "" {
-			return value
+		if _, err := fmt.Fprintf(w, "import {\n  to = subreg_dns_record.%s\n  id = \"%s:%d\"\n}\n\n", resourceName, domain, record.ID); err != nil {
+			return err
 		}
 	}
-	return ""
-}
 
-func fatal(message string) {
-	fmt.Fprintln(os.Stderr, message)
-	os.Exit(1)
+	return nil
 }
 
 func recordNamePart(name string) string {
@@ -99,6 +114,14 @@ func recordNamePart(name string) string {
 		return "wildcard"
 	}
 	return value
+}
+
+func resourceNameForDomain(domain string) string {
+	name := sanitize(domain)
+	if name == "" {
+		return "domain"
+	}
+	return name
 }
 
 func sanitize(value string) string {

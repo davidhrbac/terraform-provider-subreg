@@ -1,4 +1,14 @@
 import {
+  to = subreg_domain.example_com
+  id = "example.com"
+}
+
+import {
+  to = subreg_dns_zone.example_com
+  id = "example.com"
+}
+
+import {
   to = subreg_dns_record.root_mx_1234567
   id = "example.com:1234567"
 }

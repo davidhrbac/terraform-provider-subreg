@@ -1,6 +1,17 @@
 # __generated__ by Terraform
 # Review these resources and move them into your own configuration.
 
+# __generated__ by Terraform from "example.com"
+resource "subreg_domain" "example_com" {
+  autorenew = true
+  domain    = "example.com"
+}
+
+# __generated__ by Terraform from "example.com"
+resource "subreg_dns_zone" "example_com" {
+  domain = "example.com"
+}
+
 # __generated__ by Terraform from "example.com:1234567"
 resource "subreg_dns_record" "root_mx_1234567" {
   content = "smtp.example.net"
