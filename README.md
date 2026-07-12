@@ -149,3 +149,6 @@ TF_CLI_CONFIG_FILE=terraform.rc terraform apply
 Notes:
 - Subreg enforces TTL >= 600 (or 0 for default).
 - Root records are represented as `name = "@"`.
+
+## Acceptance Tests
+Set `TF_ACC=1` with `SUBREG_LOGIN`, `SUBREG_PASSWORD`, `SUBREG_DOMAIN`, and optionally `SUBREG_WSDL_URL=https://demoreg.net/wsdl` to run live acceptance tests against OTE.
