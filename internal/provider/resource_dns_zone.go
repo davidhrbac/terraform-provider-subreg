@@ -2,7 +2,6 @@ package provider
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/davidhrbac/terraform-provider-subreg/internal/client"
 	"github.com/hashicorp/terraform-plugin-framework/path"
@@ -150,9 +149,6 @@ func (r *dnsZoneResource) applyDNSSECState(ctx context.Context, domain string, d
 	if err != nil {
 		return dnsZoneResourceModel{}, err
 	}
-	if !info.InZone {
-		return dnsZoneResourceModel{}, fmt.Errorf("domain %q is not present in the DNS zone", domain)
-	}
 	if info.DNSSEC != desired {
 		if desired {
 			if err := r.client.SignDNSZone(ctx, domain); err != nil {
@@ -176,9 +172,6 @@ func (r *dnsZoneResource) readDNSSECState(ctx context.Context, domain string) (d
 	info, err := r.client.GetDNSInfo(ctx, domain)
 	if err != nil {
 		return dnsZoneResourceModel{}, false, err
-	}
-	if !info.InZone {
-		return dnsZoneResourceModel{}, false, nil
 	}
 
 	return dnsZoneResourceModel{

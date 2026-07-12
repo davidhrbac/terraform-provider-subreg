@@ -148,11 +148,32 @@ func TestDecodeDomainInfo(t *testing.T) {
 	}
 }
 
+func TestDecodeDNSInfoUsesInZoneAsActiveState(t *testing.T) {
+	info, err := decodeDNSInfo([]byte(`<in_zone>0</in_zone><dnssec>1</dnssec>`))
+	if err != nil {
+		t.Fatalf("decodeDNSInfo failed: %v", err)
+	}
+	if info.InZone {
+		t.Fatal("expected in_zone to be false")
+	}
+	if info.DNSSEC {
+		t.Fatal("expected DNSSEC to follow in_zone when inactive")
+	}
+
+	info, err = decodeDNSInfo([]byte(`<in_zone>1</in_zone><dnssec>1</dnssec>`))
+	if err != nil {
+		t.Fatalf("decodeDNSInfo failed: %v", err)
+	}
+	if !info.InZone || !info.DNSSEC {
+		t.Fatal("expected DNSSEC to follow in_zone when active")
+	}
+}
+
 func TestBoolToSubregIntString(t *testing.T) {
-	if got := boolToSubregIntString(true); got != "1" {
+	if got := subregAutorenewValue(true); got != "AUTORENEW" {
 		t.Fatalf("unexpected true encoding: %q", got)
 	}
-	if got := boolToSubregIntString(false); got != "0" {
+	if got := subregAutorenewValue(false); got != "EXPIRE" {
 		t.Fatalf("unexpected false encoding: %q", got)
 	}
 }

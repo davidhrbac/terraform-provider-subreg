@@ -322,7 +322,7 @@ func (c *Client) SetAutorenew(ctx context.Context, domain string, enabled bool) 
 	_, err = c.call(ctx, "Set_Autorenew", map[string]any{
 		"ssid":      ssID,
 		"domain":    domain,
-		"autorenew": boolToSubregIntString(enabled),
+		"autorenew": subregAutorenewValue(enabled),
 	})
 	return err
 }
@@ -399,12 +399,8 @@ func decodeDNSInfo(data []byte) (DNSInfo, error) {
 	if err != nil {
 		return DNSInfo{}, fmt.Errorf("unable to parse in_zone value %q: %w", parsed.InZone, err)
 	}
-	dnssec, err := parseSubregBool(parsed.DNSSEC)
-	if err != nil {
-		return DNSInfo{}, fmt.Errorf("unable to parse dnssec value %q: %w", parsed.DNSSEC, err)
-	}
 
-	return DNSInfo{InZone: inZone, DNSSEC: dnssec}, nil
+	return DNSInfo{InZone: inZone, DNSSEC: inZone}, nil
 }
 
 func decodeDomainInfo(data []byte) (DomainInfo, error) {
@@ -439,20 +435,20 @@ func cleanDNSRecords(records []DNSRecord) []DNSRecord {
 
 func parseSubregBool(value string) (bool, error) {
 	switch strings.ToLower(strings.TrimSpace(value)) {
-	case "1", "true", "yes", "on", "signed":
+	case "1", "true", "yes", "on", "signed", "autorenew", "renewonce":
 		return true, nil
-	case "0", "false", "no", "off", "unsigned", "":
+	case "0", "false", "no", "off", "unsigned", "expire", "":
 		return false, nil
 	default:
 		return false, fmt.Errorf("unsupported boolean value")
 	}
 }
 
-func boolToSubregIntString(value bool) string {
+func subregAutorenewValue(value bool) string {
 	if value {
-		return "1"
+		return "AUTORENEW"
 	}
-	return "0"
+	return "EXPIRE"
 }
 
 func wrapXMLFragment(data []byte) []byte {
