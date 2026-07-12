@@ -5,6 +5,7 @@ VERSION=${VERSION:-0.1.0}
 
 BASE_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 ROOT_DIR=$(cd "${BASE_DIR}/../.." && pwd)
+PROVIDER_DIR=${SUBREG_PROVIDER_DIR:-${ROOT_DIR}}
 
 GOOS=$(go env GOOS)
 GOARCH=$(go env GOARCH)
@@ -20,7 +21,7 @@ if [ "${GOOS}" = "windows" ]; then
   BINARY="${BINARY}.exe"
 fi
 
-go build -o "${TARGET_DIR}/${BINARY}" -ldflags "-X main.version=${VERSION}" "${ROOT_DIR}"
+cd "${PROVIDER_DIR}" && go build -o "${TARGET_DIR}/${BINARY}" -ldflags "-X main.version=${VERSION}" .
 
 cat > "${BASE_DIR}/terraform.rc" <<EOF
 provider_installation {

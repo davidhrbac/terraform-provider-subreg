@@ -121,6 +121,9 @@ func resourceNameForDomain(domain string) string {
 	if name == "" {
 		return "domain"
 	}
+	if name[0] >= '0' && name[0] <= '9' {
+		return "domain_" + name
+	}
 	return name
 }
 

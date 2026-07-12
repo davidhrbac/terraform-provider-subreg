@@ -54,3 +54,20 @@ func TestWriteImportsAllowsEmptyZone(t *testing.T) {
 		t.Fatalf("expected 2 import blocks, got output:\n%s", output)
 	}
 }
+
+func TestWriteImportsPrefixesNumericDomainNames(t *testing.T) {
+	var buf bytes.Buffer
+	if err := writeImports(&buf, "1.example.com", nil); err != nil {
+		t.Fatalf("writeImports failed: %v", err)
+	}
+
+	output := buf.String()
+	for _, want := range []string{
+		"to = subreg_domain.domain_1_example_com",
+		"to = subreg_dns_zone.domain_1_example_com",
+	} {
+		if !strings.Contains(output, want) {
+			t.Fatalf("output missing %q:\n%s", want, output)
+		}
+	}
+}
