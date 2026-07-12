@@ -1,6 +1,6 @@
 # Terraform Provider Subreg
 
-Manage DNS records in Subreg via the SOAP API.
+Manage domain and DNS settings in Subreg via the SOAP API.
 
 ## Requirements
 - Terraform 1.x
@@ -72,6 +72,29 @@ Use `domain:id` format, where `id` is the Subreg record ID:
 
 ```bash
 terraform import subreg_dns_record.root_a example.com:123
+```
+
+## Resource: subreg_domain
+
+Manages domain-level settings.
+
+Arguments:
+- `domain` (Required) Registered domain, e.g. `example.com`.
+- `autorenew` (Required) Whether the domain should auto-renew.
+
+Example:
+
+```hcl
+resource "subreg_domain" "example" {
+  domain    = "example.com"
+  autorenew = true
+}
+```
+
+Import:
+
+```bash
+terraform import subreg_domain.example example.com
 ```
 
 ## Resource: subreg_dns_zone

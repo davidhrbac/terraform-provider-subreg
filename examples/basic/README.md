@@ -41,5 +41,6 @@ TF_CLI_CONFIG_FILE=terraform.rc terraform apply
 
 ## Notes
 - Use `SUBREG_WSDL_URL=https://demoreg.net/wsdl` for the test environment.
+- Domain autorenew is managed by the `subreg_domain` resource.
 - The data source `subreg_dns_zone` only reads records.
 - DNSSEC signing is managed by the `subreg_dns_zone` resource.

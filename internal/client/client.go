@@ -158,6 +158,11 @@ type getDNSInfoData struct {
 	DNSSEC string `xml:"dnssec"`
 }
 
+type getDomainInfoData struct {
+	Domain    string `xml:"domain"`
+	Autorenew string `xml:"autorenew"`
+}
+
 func New(login, password, wsdlURL string) (*Client, error) {
 	if wsdlURL == "" {
 		return nil, errors.New("wsdl URL is required")
@@ -291,6 +296,37 @@ func (c *Client) UnsignDNSZone(ctx context.Context, domain string) error {
 	return err
 }
 
+func (c *Client) GetDomainInfo(ctx context.Context, domain string) (DomainInfo, error) {
+	ssID, err := c.Login(ctx)
+	if err != nil {
+		return DomainInfo{}, err
+	}
+
+	resp, err := c.call(ctx, "Info_Domain", map[string]any{
+		"ssid":   ssID,
+		"domain": domain,
+	})
+	if err != nil {
+		return DomainInfo{}, err
+	}
+
+	return decodeDomainInfo(resp.Data.InnerXML)
+}
+
+func (c *Client) SetAutorenew(ctx context.Context, domain string, enabled bool) error {
+	ssID, err := c.Login(ctx)
+	if err != nil {
+		return err
+	}
+
+	_, err = c.call(ctx, "Set_Autorenew", map[string]any{
+		"ssid":      ssID,
+		"domain":    domain,
+		"autorenew": boolToSubregIntString(enabled),
+	})
+	return err
+}
+
 func writeDebugFile(name string, data []byte) error {
 	if len(data) == 0 {
 		return nil
@@ -371,6 +407,25 @@ func decodeDNSInfo(data []byte) (DNSInfo, error) {
 	return DNSInfo{InZone: inZone, DNSSEC: dnssec}, nil
 }
 
+func decodeDomainInfo(data []byte) (DomainInfo, error) {
+	trimmed := bytes.TrimSpace(data)
+	if len(trimmed) == 0 {
+		return DomainInfo{}, fmt.Errorf("unable to parse domain info response")
+	}
+
+	var parsed getDomainInfoData
+	if err := decodeXMLBytes(wrapXMLFragment(trimmed), &parsed); err != nil {
+		return DomainInfo{}, fmt.Errorf("unable to parse domain info response: %w", err)
+	}
+
+	autorenew, err := parseSubregBool(parsed.Autorenew)
+	if err != nil {
+		return DomainInfo{}, fmt.Errorf("unable to parse autorenew value %q: %w", parsed.Autorenew, err)
+	}
+
+	return DomainInfo{Domain: parsed.Domain, Autorenew: autorenew}, nil
+}
+
 func cleanDNSRecords(records []DNSRecord) []DNSRecord {
 	filtered := make([]DNSRecord, 0, len(records))
 	for _, record := range records {
@@ -391,6 +446,13 @@ func parseSubregBool(value string) (bool, error) {
 	default:
 		return false, fmt.Errorf("unsupported boolean value")
 	}
+}
+
+func boolToSubregIntString(value bool) string {
+	if value {
+		return "1"
+	}
+	return "0"
 }
 
 func wrapXMLFragment(data []byte) []byte {

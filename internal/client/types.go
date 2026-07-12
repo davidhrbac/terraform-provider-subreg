@@ -21,3 +21,8 @@ type DNSInfo struct {
 	InZone bool
 	DNSSEC bool
 }
+
+type DomainInfo struct {
+	Domain    string
+	Autorenew bool
+}

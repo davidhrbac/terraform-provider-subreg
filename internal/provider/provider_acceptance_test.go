@@ -159,6 +159,59 @@ func TestAccDNSZoneDNSSECResource(t *testing.T) {
 	})
 }
 
+func TestAccDomainAutorenewResource(t *testing.T) {
+	if !acceptanceEnabled() {
+		t.Skip("set TF_ACC=1 to run acceptance tests")
+	}
+
+	domain := acceptanceDomain(t)
+	cli, err := client.New(os.Getenv("SUBREG_LOGIN"), os.Getenv("SUBREG_PASSWORD"), acceptanceWSDLURL())
+	if err != nil {
+		t.Fatal(err)
+	}
+	info, err := cli.GetDomainInfo(context.Background(), domain)
+	if err != nil {
+		t.Fatal(err)
+	}
+	initialAutorenew := info.Autorenew
+	desiredAutorenew := !initialAutorenew
+	t.Cleanup(func() {
+		if info, err := cli.GetDomainInfo(context.Background(), domain); err == nil && info.Autorenew != initialAutorenew {
+			if err := cli.SetAutorenew(context.Background(), domain, initialAutorenew); err != nil {
+				t.Fatalf("restore autorenew state: %v", err)
+			}
+		}
+	})
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:                  func() { acceptancePreCheck(t) },
+		ProtoV6ProviderFactories:  acceptanceProviderFactories(),
+		CheckDestroy:              acceptanceCheckDomainDestroy,
+		PreventPostDestroyRefresh: true,
+		Steps: []resource.TestStep{
+			{
+				Config: acceptanceDomainAutorenewConfig(domain, desiredAutorenew),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr("subreg_domain.test", "domain", domain),
+					resource.TestCheckResourceAttr("subreg_domain.test", "autorenew", fmt.Sprintf("%t", desiredAutorenew)),
+				),
+			},
+			{
+				Config: acceptanceDomainAutorenewConfig(domain, initialAutorenew),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr("subreg_domain.test", "autorenew", fmt.Sprintf("%t", initialAutorenew)),
+				),
+			},
+			{
+				ResourceName:      "subreg_domain.test",
+				ImportStateIdFunc: acceptanceDomainImportStateIDFunc,
+				ImportState:       true,
+				ImportStateVerify: true,
+			},
+		},
+	})
+}
+
 func acceptanceEnabled() bool {
 	return os.Getenv("TF_ACC") == "1"
 }
@@ -249,6 +302,15 @@ resource "subreg_dns_zone" "test" {
 `, domain)
 }
 
+func acceptanceDomainAutorenewConfig(domain string, autorenew bool) string {
+	return acceptanceProviderConfig() + fmt.Sprintf(`
+resource "subreg_domain" "test" {
+  domain    = %q
+  autorenew = %t
+}
+`, domain, autorenew)
+}
+
 func acceptanceCheckDNSRecordDestroy(s *terraform.State) error {
 	cli, err := client.New(os.Getenv("SUBREG_LOGIN"), os.Getenv("SUBREG_PASSWORD"), acceptanceWSDLURL())
 	if err != nil {
@@ -309,6 +371,34 @@ func acceptanceCheckDNSZoneDestroy(s *terraform.State) error {
 	return nil
 }
 
+func acceptanceCheckDomainDestroy(s *terraform.State) error {
+	cli, err := client.New(os.Getenv("SUBREG_LOGIN"), os.Getenv("SUBREG_PASSWORD"), acceptanceWSDLURL())
+	if err != nil {
+		return err
+	}
+
+	for _, rs := range s.RootModule().Resources {
+		if rs.Type != "subreg_domain" {
+			continue
+		}
+
+		domain := rs.Primary.Attributes["domain"]
+		if domain == "" {
+			return fmt.Errorf("missing domain for resource type %s", rs.Type)
+		}
+
+		info, err := cli.GetDomainInfo(context.Background(), domain)
+		if err != nil {
+			return err
+		}
+		if info.Autorenew {
+			return fmt.Errorf("domain autorenew still enabled after destroy: type=%s domain=%s", rs.Type, domain)
+		}
+	}
+
+	return nil
+}
+
 func acceptanceCheckResourceAttrIntGreaterThan(resourceName, attributeName string, min int) resource.TestCheckFunc {
 	return func(s *terraform.State) error {
 		rs, ok := s.RootModule().Resources[resourceName]
@@ -354,6 +444,20 @@ func acceptanceDNSZoneImportStateIDFunc(s *terraform.State) (string, error) {
 	rs, ok := s.RootModule().Resources["subreg_dns_zone.test"]
 	if !ok {
 		return "", fmt.Errorf("missing resource subreg_dns_zone.test")
+	}
+
+	domain := rs.Primary.Attributes["domain"]
+	if domain == "" {
+		return "", fmt.Errorf("missing domain for import")
+	}
+
+	return domain, nil
+}
+
+func acceptanceDomainImportStateIDFunc(s *terraform.State) (string, error) {
+	rs, ok := s.RootModule().Resources["subreg_domain.test"]
+	if !ok {
+		return "", fmt.Errorf("missing resource subreg_domain.test")
 	}
 
 	domain := rs.Primary.Attributes["domain"]

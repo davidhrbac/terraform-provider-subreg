@@ -127,6 +127,36 @@ func TestDecodeDNSZoneRecords(t *testing.T) {
 	}
 }
 
+func TestDecodeDomainInfo(t *testing.T) {
+	info, err := decodeDomainInfo([]byte(`<domain>example.com</domain><autorenew>1</autorenew>`))
+	if err != nil {
+		t.Fatalf("decodeDomainInfo failed: %v", err)
+	}
+	if info.Domain != "example.com" {
+		t.Fatalf("unexpected domain: %q", info.Domain)
+	}
+	if !info.Autorenew {
+		t.Fatal("expected autorenew to be true")
+	}
+
+	info, err = decodeDomainInfo([]byte(`<domain>example.com</domain><autorenew>0</autorenew>`))
+	if err != nil {
+		t.Fatalf("decodeDomainInfo failed: %v", err)
+	}
+	if info.Autorenew {
+		t.Fatal("expected autorenew to be false")
+	}
+}
+
+func TestBoolToSubregIntString(t *testing.T) {
+	if got := boolToSubregIntString(true); got != "1" {
+		t.Fatalf("unexpected true encoding: %q", got)
+	}
+	if got := boolToSubregIntString(false); got != "0" {
+		t.Fatalf("unexpected false encoding: %q", got)
+	}
+}
+
 func TestGetWsdlDefinitionsAndNamespace(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/xml")
