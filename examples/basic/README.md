@@ -44,3 +44,8 @@ TF_CLI_CONFIG_FILE=terraform.rc terraform apply
 - Domain autorenew is managed by the `subreg_domain` resource.
 - The data source `subreg_dns_zone` only reads records.
 - DNSSEC signing is managed by the `subreg_dns_zone` resource.
+
+## Importing existing domains
+Use `examples/import-zone` to bootstrap an existing domain into Terraform.
+Generated configs are written to `domains/<first-char>/<domain>.tf`.
+For example, `example.com` is written under `domains/e/example.com.tf`.
