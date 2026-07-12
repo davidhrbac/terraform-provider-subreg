@@ -7,4 +7,3 @@ terraform.tfstate.backup
 .terraform/
 plugins/
 .terraform.lock.hcl
-domains/
