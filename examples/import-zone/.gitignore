@@ -1,0 +1,9 @@
+imports.tf
+generated_resources.tf
+terraform.rc
+terraform.tfvars
+terraform.tfstate
+terraform.tfstate.backup
+.terraform/
+plugins/
+.terraform.lock.hcl

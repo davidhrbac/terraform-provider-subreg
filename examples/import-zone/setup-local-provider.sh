@@ -35,8 +35,10 @@ echo "Wrote ${BASE_DIR}/terraform.rc"
 echo "Built ${TARGET_DIR}/${BINARY}"
 
 if [ "${SKIP_TF_CLEAN:-}" != "1" ]; then
+  rm -f "${BASE_DIR}/imports.tf" "${BASE_DIR}/generated_resources.tf"
   rm -f "${BASE_DIR}/.terraform.lock.hcl"
   rm -rf "${BASE_DIR}/.terraform"
+  echo "Removed ${BASE_DIR}/imports.tf and ${BASE_DIR}/generated_resources.tf"
   echo "Removed ${BASE_DIR}/.terraform.lock.hcl and ${BASE_DIR}/.terraform"
   echo "Run: TF_CLI_CONFIG_FILE=terraform.rc terraform init"
 fi

@@ -131,6 +131,7 @@ chmod +x generate-imports.sh
 ```
 
 This creates `examples/import-zone/imports.tf` with one import block per record ID.
+`imports.tf` and `generated_resources.tf` are local artifacts and ignored by git.
 
 4) Generate Terraform config and import state:
 
