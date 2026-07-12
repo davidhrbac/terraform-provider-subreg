@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"os"
@@ -39,7 +40,7 @@ func main() {
 		fatal(err.Error())
 	}
 
-	records, err := api.GetDNSZone(nil, domain)
+	records, err := api.GetDNSZone(context.Background(), domain)
 	if err != nil {
 		fatal(err.Error())
 	}

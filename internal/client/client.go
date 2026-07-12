@@ -40,6 +40,14 @@ type responseEnvelope struct {
 	Response responseBody `xml:"response"`
 }
 
+type soapEnvelope struct {
+	Body soapBody `xml:"Body"`
+}
+
+type soapBody struct {
+	InnerXML []byte `xml:",innerxml"`
+}
+
 type responseBody struct {
 	Status string         `xml:"status"`
 	Data   responseData   `xml:"data"`
@@ -480,6 +488,9 @@ func (c *Client) call(ctx context.Context, method string, params any) (responseB
 	if c.httpClient == nil {
 		return responseBody{}, errors.New("http client is not initialized")
 	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	if err := ctx.Err(); err != nil {
 		return responseBody{}, err
 	}
@@ -523,8 +534,13 @@ func (c *Client) call(ctx context.Context, method string, params any) (responseB
 		return responseBody{}, fmt.Errorf("%s call failed: unexpected status code: %s", method, res.Status)
 	}
 
+	var soapResp soapEnvelope
+	if err := decodeXMLBytes(body, &soapResp); err != nil {
+		return responseBody{}, fmt.Errorf("%s soap envelope unmarshal failed: %w", method, err)
+	}
+
 	var envelope responseEnvelope
-	if err := decodeXMLBytes(body, &envelope); err != nil {
+	if err := decodeXMLBytes(soapResp.Body.InnerXML, &envelope); err != nil {
 		return responseBody{}, fmt.Errorf("%s response unmarshal failed: %w", method, err)
 	}
 

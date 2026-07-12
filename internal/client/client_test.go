@@ -175,3 +175,46 @@ func TestGetWsdlDefinitionsAndNamespace(t *testing.T) {
 		t.Fatalf("unexpected soap action: %s", got)
 	}
 }
+
+func TestCallParsesSOAPEnvelope(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/xml")
+		_, _ = w.Write([]byte(`<?xml version="1.0"?>
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+  <soap:Body>
+    <Login_Container>
+      <response>
+        <status>ok</status>
+        <data><ssid>abc123</ssid></data>
+      </response>
+    </Login_Container>
+  </soap:Body>
+</soap:Envelope>`))
+	}))
+	defer server.Close()
+
+	client := &Client{
+		httpClient:      server.Client(),
+		endpointURL:     server.URL,
+		targetNamespace: "http://subreg.cz/types",
+		wsdl: &wsdlDefinitions{
+			Bindings: []*wsdlBinding{{
+				Operations: []*wsdlOperation{{
+					Name:           "Login",
+					SoapOperations: []*soapOperation{{SoapAction: "http://subreg.cz/wsdl#Login"}},
+				}},
+			}},
+		},
+	}
+
+	resp, err := client.call(context.Background(), "Login", map[string]any{
+		"login":    "user",
+		"password": "secret",
+	})
+	if err != nil {
+		t.Fatalf("call failed: %v", err)
+	}
+	if got := strings.TrimSpace(string(resp.Data.InnerXML)); !strings.Contains(got, "abc123") {
+		t.Fatalf("unexpected inner xml: %q", got)
+	}
+}
