@@ -7,3 +7,5 @@ env.sh
 terraform.log
 plugins/
 generated_resources.tf
+AGENTS.md
+TODO.md
