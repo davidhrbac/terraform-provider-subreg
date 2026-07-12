@@ -103,15 +103,14 @@ Manages DNSSEC signing for a DNS zone.
 
 Arguments:
 - `domain` (Required) Registered domain, e.g. `example.com`.
-
-Attributes:
-- `dnssec` Whether the zone is signed.
+- `dnssec` (Required) Desired DNSSEC state for the zone.
 
 Example:
 
 ```hcl
 resource "subreg_dns_zone" "example" {
   domain = "example.com"
+  dnssec = true
 }
 ```
 
@@ -185,11 +184,12 @@ This creates `examples/import-zone/imports.tf` with imports for `subreg_domain`,
 
 ```bash
 TF_CLI_CONFIG_FILE=terraform.rc terraform init
-TF_CLI_CONFIG_FILE=terraform.rc terraform plan -generate-config-out="generated_resources.tf"
+chmod +x generate-config.sh
+./generate-config.sh
 TF_CLI_CONFIG_FILE=terraform.rc terraform apply
 ```
 
-5) Review `generated_resources.tf` and clean up:
+5) Review `domains/<first-char>/<domain>.tf` and clean up:
 - Remove any duplicate records you don't want managed.
 - If you keep round-robin records, keep one resource per record.
 - You can delete `imports.tf` after import is complete.
@@ -198,6 +198,8 @@ Notes:
 - Subreg enforces TTL >= 600 (or 0 for default).
 - Root records are represented as `name = "@"`.
 - The import set also includes one `subreg_domain` and one `subreg_dns_zone` per domain.
+- `subreg_dns_zone.dnssec` is the desired DNSSEC state.
+- Generated config is sorted as domain, DNSSEC zone, then DNS records.
 
 ## Acceptance Tests
 Set `TF_ACC=1` with `SUBREG_LOGIN`, `SUBREG_PASSWORD`, `SUBREG_DOMAIN`, and optionally `SUBREG_WSDL_URL=https://demoreg.net/wsdl` to run live acceptance tests against OTE.

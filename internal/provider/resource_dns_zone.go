@@ -45,8 +45,8 @@ func (r *dnsZoneResource) Schema(ctx context.Context, req resource.SchemaRequest
 				Description: "Registered domain whose DNSSEC signing state is managed.",
 			},
 			"dnssec": schema.BoolAttribute{
-				Computed:    true,
-				Description: "Whether the zone is DNSSEC signed.",
+				Required:    true,
+				Description: "Desired DNSSEC state for the zone.",
 			},
 		},
 	}
@@ -73,9 +73,9 @@ func (r *dnsZoneResource) Create(ctx context.Context, req resource.CreateRequest
 		return
 	}
 
-	state, err := r.ensureDNSSECEnabled(ctx, plan.Domain.ValueString())
+	state, err := r.applyDNSSECState(ctx, plan.Domain.ValueString(), plan.DNSSEC.ValueBool())
 	if err != nil {
-		resp.Diagnostics.AddError("Unable to enable DNSSEC for DNS zone", err.Error())
+		resp.Diagnostics.AddError("Unable to configure DNSSEC for DNS zone", err.Error())
 		return
 	}
 
@@ -103,23 +103,19 @@ func (r *dnsZoneResource) Read(ctx context.Context, req resource.ReadRequest, re
 }
 
 func (r *dnsZoneResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
-	var state dnsZoneResourceModel
-	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
+	var plan dnsZoneResourceModel
+	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	refreshed, keep, err := r.readDNSSECState(ctx, state.Domain.ValueString())
+	state, err := r.applyDNSSECState(ctx, plan.Domain.ValueString(), plan.DNSSEC.ValueBool())
 	if err != nil {
-		resp.Diagnostics.AddError("Unable to refresh DNS zone DNSSEC state", err.Error())
-		return
-	}
-	if !keep {
-		resp.State.RemoveResource(ctx)
+		resp.Diagnostics.AddError("Unable to update DNS zone DNSSEC state", err.Error())
 		return
 	}
 
-	resp.Diagnostics.Append(resp.State.Set(ctx, &refreshed)...)
+	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
 func (r *dnsZoneResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
@@ -134,7 +130,7 @@ func (r *dnsZoneResource) Delete(ctx context.Context, req resource.DeleteRequest
 		resp.Diagnostics.AddError("Unable to read DNS zone DNSSEC state", err.Error())
 		return
 	}
-	if !info.DNSSEC {
+	if !state.DNSSEC.ValueBool() || !info.DNSSEC {
 		return
 	}
 
@@ -149,7 +145,7 @@ func (r *dnsZoneResource) ImportState(ctx context.Context, req resource.ImportSt
 	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), req.ID)...)
 }
 
-func (r *dnsZoneResource) ensureDNSSECEnabled(ctx context.Context, domain string) (dnsZoneResourceModel, error) {
+func (r *dnsZoneResource) applyDNSSECState(ctx context.Context, domain string, desired bool) (dnsZoneResourceModel, error) {
 	info, err := r.client.GetDNSInfo(ctx, domain)
 	if err != nil {
 		return dnsZoneResourceModel{}, err
@@ -157,23 +153,22 @@ func (r *dnsZoneResource) ensureDNSSECEnabled(ctx context.Context, domain string
 	if !info.InZone {
 		return dnsZoneResourceModel{}, fmt.Errorf("domain %q is not present in the DNS zone", domain)
 	}
-	if !info.DNSSEC {
-		if err := r.client.SignDNSZone(ctx, domain); err != nil {
-			return dnsZoneResourceModel{}, err
-		}
-		info, err = r.client.GetDNSInfo(ctx, domain)
-		if err != nil {
-			return dnsZoneResourceModel{}, err
-		}
-		if !info.DNSSEC {
-			return dnsZoneResourceModel{}, fmt.Errorf("DNSSEC is still disabled for %q after signing", domain)
+	if info.DNSSEC != desired {
+		if desired {
+			if err := r.client.SignDNSZone(ctx, domain); err != nil {
+				return dnsZoneResourceModel{}, err
+			}
+		} else {
+			if err := r.client.UnsignDNSZone(ctx, domain); err != nil {
+				return dnsZoneResourceModel{}, err
+			}
 		}
 	}
 
 	return dnsZoneResourceModel{
 		ID:     types.StringValue(domain),
 		Domain: types.StringValue(domain),
-		DNSSEC: types.BoolValue(true),
+		DNSSEC: types.BoolValue(desired),
 	}, nil
 }
 
@@ -182,13 +177,13 @@ func (r *dnsZoneResource) readDNSSECState(ctx context.Context, domain string) (d
 	if err != nil {
 		return dnsZoneResourceModel{}, false, err
 	}
-	if !info.InZone || !info.DNSSEC {
+	if !info.InZone {
 		return dnsZoneResourceModel{}, false, nil
 	}
 
 	return dnsZoneResourceModel{
 		ID:     types.StringValue(domain),
 		Domain: types.StringValue(domain),
-		DNSSEC: types.BoolValue(true),
+		DNSSEC: types.BoolValue(info.DNSSEC),
 	}, true, nil
 }

@@ -298,6 +298,7 @@ func acceptanceDNSZoneDNSSECConfig(domain string) string {
 	return acceptanceProviderConfig() + fmt.Sprintf(`
 resource "subreg_dns_zone" "test" {
   domain = %q
+  dnssec = true
 }
 `, domain)
 }

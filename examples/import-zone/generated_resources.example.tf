@@ -10,6 +10,7 @@ resource "subreg_domain" "example_com" {
 # __generated__ by Terraform from "example.com"
 resource "subreg_dns_zone" "example_com" {
   domain = "example.com"
+  dnssec = true
 }
 
 # __generated__ by Terraform from "example.com:1234567"
