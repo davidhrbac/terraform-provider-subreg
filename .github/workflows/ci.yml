@@ -28,6 +28,26 @@ jobs:
       - name: go test
         run: go test ./...
 
+  docs:
+    name: Docs generated
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version: "1.25.12"
+
+      - name: install tfplugindocs
+        run: go install github.com/hashicorp/terraform-plugin-docs/cmd/tfplugindocs@latest
+
+      - name: generate docs
+        run: |
+          "$(go env GOPATH)/bin/tfplugindocs" generate
+
+      - name: verify docs clean
+        run: git diff --exit-code
+
   security:
     runs-on: ubuntu-latest
     steps:
