@@ -16,3 +16,8 @@ type DNSRecordInput struct {
 	Prio    *int
 	TTL     *int
 }
+
+type DNSInfo struct {
+	InZone bool
+	DNSSEC bool
+}

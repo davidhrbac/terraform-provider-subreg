@@ -74,6 +74,30 @@ Use `domain:id` format, where `id` is the Subreg record ID:
 terraform import subreg_dns_record.root_a example.com:123
 ```
 
+## Resource: subreg_dns_zone
+
+Manages DNSSEC signing for a DNS zone.
+
+Arguments:
+- `domain` (Required) Registered domain, e.g. `example.com`.
+
+Attributes:
+- `dnssec` Whether the zone is signed.
+
+Example:
+
+```hcl
+resource "subreg_dns_zone" "example" {
+  domain = "example.com"
+}
+```
+
+Import:
+
+```bash
+terraform import subreg_dns_zone.example example.com
+```
+
 ## Data Source: subreg_dns_zone
 
 Reads all records in a DNS zone.

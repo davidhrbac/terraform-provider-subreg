@@ -153,6 +153,11 @@ type getDNSZoneDataRecords struct {
 	Records []DNSRecord `xml:"records>record"`
 }
 
+type getDNSInfoData struct {
+	InZone string `xml:"in_zone"`
+	DNSSEC string `xml:"dnssec"`
+}
+
 func New(login, password, wsdlURL string) (*Client, error) {
 	if wsdlURL == "" {
 		return nil, errors.New("wsdl URL is required")
@@ -243,6 +248,49 @@ func (c *Client) GetDNSZone(ctx context.Context, domain string) ([]DNSRecord, er
 	return decodeDNSZoneRecords(resp.Data.InnerXML)
 }
 
+func (c *Client) GetDNSInfo(ctx context.Context, domain string) (DNSInfo, error) {
+	ssID, err := c.Login(ctx)
+	if err != nil {
+		return DNSInfo{}, err
+	}
+
+	resp, err := c.call(ctx, "Get_DNS_Info", map[string]any{
+		"ssid":   ssID,
+		"domain": domain,
+	})
+	if err != nil {
+		return DNSInfo{}, err
+	}
+
+	return decodeDNSInfo(resp.Data.InnerXML)
+}
+
+func (c *Client) SignDNSZone(ctx context.Context, domain string) error {
+	ssID, err := c.Login(ctx)
+	if err != nil {
+		return err
+	}
+
+	_, err = c.call(ctx, "Sign_DNS_Zone", map[string]any{
+		"ssid":   ssID,
+		"domain": domain,
+	})
+	return err
+}
+
+func (c *Client) UnsignDNSZone(ctx context.Context, domain string) error {
+	ssID, err := c.Login(ctx)
+	if err != nil {
+		return err
+	}
+
+	_, err = c.call(ctx, "Unsign_DNS_Zone", map[string]any{
+		"ssid":   ssID,
+		"domain": domain,
+	})
+	return err
+}
+
 func writeDebugFile(name string, data []byte) error {
 	if len(data) == 0 {
 		return nil
@@ -300,6 +348,29 @@ func decodeDNSZonePayload(data []byte) ([]DNSRecord, bool) {
 	return nil, false
 }
 
+func decodeDNSInfo(data []byte) (DNSInfo, error) {
+	trimmed := bytes.TrimSpace(data)
+	if len(trimmed) == 0 {
+		return DNSInfo{}, fmt.Errorf("unable to parse DNS info response")
+	}
+
+	var parsed getDNSInfoData
+	if err := decodeXMLBytes(wrapXMLFragment(trimmed), &parsed); err != nil {
+		return DNSInfo{}, fmt.Errorf("unable to parse DNS info response: %w", err)
+	}
+
+	inZone, err := parseSubregBool(parsed.InZone)
+	if err != nil {
+		return DNSInfo{}, fmt.Errorf("unable to parse in_zone value %q: %w", parsed.InZone, err)
+	}
+	dnssec, err := parseSubregBool(parsed.DNSSEC)
+	if err != nil {
+		return DNSInfo{}, fmt.Errorf("unable to parse dnssec value %q: %w", parsed.DNSSEC, err)
+	}
+
+	return DNSInfo{InZone: inZone, DNSSEC: dnssec}, nil
+}
+
 func cleanDNSRecords(records []DNSRecord) []DNSRecord {
 	filtered := make([]DNSRecord, 0, len(records))
 	for _, record := range records {
@@ -309,6 +380,17 @@ func cleanDNSRecords(records []DNSRecord) []DNSRecord {
 		filtered = append(filtered, record)
 	}
 	return filtered
+}
+
+func parseSubregBool(value string) (bool, error) {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "1", "true", "yes", "on", "signed":
+		return true, nil
+	case "0", "false", "no", "off", "unsigned", "":
+		return false, nil
+	default:
+		return false, fmt.Errorf("unsupported boolean value")
+	}
 }
 
 func wrapXMLFragment(data []byte) []byte {

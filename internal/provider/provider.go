@@ -102,6 +102,7 @@ func (p *subregProvider) Configure(ctx context.Context, req provider.ConfigureRe
 func (p *subregProvider) Resources(ctx context.Context) []func() resource.Resource {
 	return []func() resource.Resource{
 		NewDNSRecordResource,
+		NewDNSZoneResource,
 	}
 }
 

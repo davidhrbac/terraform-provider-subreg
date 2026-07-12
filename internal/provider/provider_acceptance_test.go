@@ -114,6 +114,51 @@ func TestAccDNSZoneDataSource(t *testing.T) {
 	})
 }
 
+func TestAccDNSZoneDNSSECResource(t *testing.T) {
+	if !acceptanceEnabled() {
+		t.Skip("set TF_ACC=1 to run acceptance tests")
+	}
+
+	domain := acceptanceDomain(t)
+	cli, err := client.New(os.Getenv("SUBREG_LOGIN"), os.Getenv("SUBREG_PASSWORD"), acceptanceWSDLURL())
+	if err != nil {
+		t.Fatal(err)
+	}
+	info, err := cli.GetDNSInfo(context.Background(), domain)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.InZone && info.DNSSEC {
+		t.Cleanup(func() {
+			if err := cli.SignDNSZone(context.Background(), domain); err != nil {
+				t.Fatalf("restore dnssec state: %v", err)
+			}
+		})
+	}
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:                  func() { acceptancePreCheck(t) },
+		ProtoV6ProviderFactories:  acceptanceProviderFactories(),
+		CheckDestroy:              acceptanceCheckDNSZoneDestroy,
+		PreventPostDestroyRefresh: true,
+		Steps: []resource.TestStep{
+			{
+				Config: acceptanceDNSZoneDNSSECConfig(domain),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr("subreg_dns_zone.test", "domain", domain),
+					resource.TestCheckResourceAttr("subreg_dns_zone.test", "dnssec", "true"),
+				),
+			},
+			{
+				ResourceName:      "subreg_dns_zone.test",
+				ImportStateIdFunc: acceptanceDNSZoneImportStateIDFunc,
+				ImportState:       true,
+				ImportStateVerify: true,
+			},
+		},
+	})
+}
+
 func acceptanceEnabled() bool {
 	return os.Getenv("TF_ACC") == "1"
 }
@@ -196,6 +241,14 @@ data "subreg_dns_zone" "test" {
 `, domain)
 }
 
+func acceptanceDNSZoneDNSSECConfig(domain string) string {
+	return acceptanceProviderConfig() + fmt.Sprintf(`
+resource "subreg_dns_zone" "test" {
+  domain = %q
+}
+`, domain)
+}
+
 func acceptanceCheckDNSRecordDestroy(s *terraform.State) error {
 	cli, err := client.New(os.Getenv("SUBREG_LOGIN"), os.Getenv("SUBREG_PASSWORD"), acceptanceWSDLURL())
 	if err != nil {
@@ -222,6 +275,34 @@ func acceptanceCheckDNSRecordDestroy(s *terraform.State) error {
 		}
 		if found {
 			return fmt.Errorf("dns record still exists after destroy: type=%s id=%s", rs.Type, rs.Primary.ID)
+		}
+	}
+
+	return nil
+}
+
+func acceptanceCheckDNSZoneDestroy(s *terraform.State) error {
+	cli, err := client.New(os.Getenv("SUBREG_LOGIN"), os.Getenv("SUBREG_PASSWORD"), acceptanceWSDLURL())
+	if err != nil {
+		return err
+	}
+
+	for _, rs := range s.RootModule().Resources {
+		if rs.Type != "subreg_dns_zone" {
+			continue
+		}
+
+		domain := rs.Primary.Attributes["domain"]
+		if domain == "" {
+			return fmt.Errorf("missing domain for resource type %s", rs.Type)
+		}
+
+		info, err := cli.GetDNSInfo(context.Background(), domain)
+		if err != nil {
+			return err
+		}
+		if info.DNSSEC {
+			return fmt.Errorf("dns zone still signed after destroy: type=%s domain=%s", rs.Type, domain)
 		}
 	}
 
@@ -267,6 +348,20 @@ func acceptanceImportStateIDFunc(s *terraform.State) (string, error) {
 	}
 
 	return fmt.Sprintf("%s:%s", domain, rs.Primary.ID), nil
+}
+
+func acceptanceDNSZoneImportStateIDFunc(s *terraform.State) (string, error) {
+	rs, ok := s.RootModule().Resources["subreg_dns_zone.test"]
+	if !ok {
+		return "", fmt.Errorf("missing resource subreg_dns_zone.test")
+	}
+
+	domain := rs.Primary.Attributes["domain"]
+	if domain == "" {
+		return "", fmt.Errorf("missing domain for import")
+	}
+
+	return domain, nil
 }
 
 func acceptanceWSDLURL() string {
