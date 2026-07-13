@@ -28,6 +28,26 @@ jobs:
       - name: go test
         run: go test ./...
 
+  docs:
+    name: Docs generated
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version: "1.25.12"
+
+      - name: install tfplugindocs
+        run: go install github.com/hashicorp/terraform-plugin-docs/cmd/tfplugindocs@latest
+
+      - name: generate docs
+        run: |
+          "$(go env GOPATH)/bin/tfplugindocs" generate
+
+      - name: verify docs clean
+        run: git diff --exit-code
+
   security:
     runs-on: ubuntu-latest
     steps:
@@ -35,13 +55,13 @@ jobs:
 
       - uses: actions/setup-go@v6
         with:
-          go-version-file: go.mod
+          go-version: "1.25.12"
 
       - name: install security tools
         run: |
-          go install golang.org/x/vuln/cmd/govulncheck@latest
-          go install github.com/google/osv-scanner/cmd/osv-scanner@latest
-          go install github.com/CycloneDX/cyclonedx-gomod/cmd/cyclonedx-gomod@latest
+          go install golang.org/x/vuln/cmd/govulncheck@v1.6.0
+          go install github.com/google/osv-scanner/cmd/osv-scanner@v1.9.2
+          go install github.com/CycloneDX/cyclonedx-gomod/cmd/cyclonedx-gomod@v1.10.0
 
       - name: govulncheck (package scan)
         run: $(go env GOPATH)/bin/govulncheck -scan=package ./...
