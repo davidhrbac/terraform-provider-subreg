@@ -9,3 +9,4 @@ plugins/
 generated_resources.tf
 AGENTS.md
 TODO.md
+reports/
